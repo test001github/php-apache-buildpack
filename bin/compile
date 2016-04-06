@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+################################################################################
+# bin/compile <build-dir> <cache-dir>                                          #
+################################################################################
+
+# ---------------------------------------------------------------------------- #
+# 変数を設定                                                                   #
+# ---------------------------------------------------------------------------- #
+BIN_DIR=$(dirname $0)
+BUILDPACK_DIR=`cd $(dirname $0); cd ..; pwd`
+BUILD_DIR=$1
+CACHE_DIR=$2
+
+APACHE_VERSION="2.4.16"
+APACHE_PATH="apache"
+PHP_VERSION="5.6.14"
+PHP_PATH="php"
+
+# ---------------------------------------------------------------------------- #
+# ドキュメントルート(/app/www/)の設定                                          #
+# ---------------------------------------------------------------------------- #
+cd $BUILD_DIR
+
+mkdir -p $CACHE_DIR/www
+mv * $CACHE_DIR/www
+mv $CACHE_DIR/www .
+
+# ---------------------------------------------------------------------------- #
+# コンパイル済みの Apache HTTP Server を展開                                   #
+# ---------------------------------------------------------------------------- #
+APACHE_DIR="${BUILDPACK_DIR}/download/httpd/2.4/apache-$APACHE_VERSION.tar.gz"
+echo "-----> Bundling Apache version $APACHE_VERSION"
+tar -xvf $APACHE_DIR
+
+# ---------------------------------------------------------------------------- #
+# コンパイル済みの PHP を展開                                                  #
+# ---------------------------------------------------------------------------- #
+PHP_DIR="${BUILDPACK_DIR}/download/php/5.6/php-$PHP_VERSION.tar.gz"
+echo "-----> Bundling PHP version $PHP_VERSION"
+tar -xvf $PHP_DIR 
+
+# ---------------------------------------------------------------------------- #
+# httpd.conf と php.ini を上書き                                               #
+# ---------------------------------------------------------------------------- #
+ls -al $BUILDPACK_DIR
+cp $BUILDPACK_DIR/config/httpd.conf $APACHE_PATH/conf
+cp $BUILDPACK_DIR/config/php.ini $PHP_PATH
+
+# ---------------------------------------------------------------------------- #
+# php のパスを設定                                                             #
+# ---------------------------------------------------------------------------- #
+mkdir -p bin
+ln -s /app/php/bin/php bin/php
+
+# ---------------------------------------------------------------------------- #
+# Apache HTTP Server 起動スクリプト(boot.sh)作成                               #
+# ---------------------------------------------------------------------------- #
+cat << EOF > boot.sh
+for var in \`env|cut -f1 -d=\`; do
+  echo "PassEnv \$var" >> /app/apache/conf/httpd.conf;
+done
+touch /app/apache/logs/error_log
+touch /app/apache/logs/access_log
+tail -F /app/apache/logs/error_log &
+tail -F /app/apache/logs/access_log &
+export LD_LIBRARY_PATH=/app/php/ext
+export PHP_INI_SCAN_DIR=/app/www
+echo "Launching apache"
+exec /app/apache/bin/httpd -DNO_DETACH
+EOF
+
+chmod +x boot.sh
+
+# ---------------------------------------------------------------------------- #
+# キャッシュディレクトリをクリア                                               #
+# ---------------------------------------------------------------------------- #
+rm -rf $CACHE_DIR
+
+
+
+
